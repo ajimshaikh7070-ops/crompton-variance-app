@@ -35,7 +35,6 @@ def process_file_with_skip(file_obj, header_row=0, sheet_name=0):
 
 if bom_file and inward_file:
     try:
-        # Side controls for header rows if needed
         st.sidebar.markdown("---")
         st.sidebar.subheader("⚙️ Sheet & Header Settings")
         
@@ -47,8 +46,8 @@ if bom_file and inward_file:
         df_inward, _, _ = process_file_with_skip(inward_file, header_row=0)
 
         # Smart column detection
-        bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Part No', 'Code', 'Item'])
-        bom_rate_col = find_column(df_bom, ['BOM Rate', 'Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount'])
+        bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Item code', 'Part No', 'Code', 'Item'])
+        bom_rate_col = find_column(df_bom, ['BOM Rate', 'Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount', 'Value', 'PORate', 'PO Rate'])
 
         inward_mat_col = find_column(df_inward, ['Item code', 'Item Code', 'Material Code', 'Material', 'Part No', 'Code'])
         inward_qty_col = find_column(df_inward, ['Received qty', 'Inward Qty', 'Qty', 'Quantity', 'Inward_Qty', 'Received Qty'])
@@ -56,8 +55,8 @@ if bom_file and inward_file:
         inward_amount_col = find_column(df_inward, ['Total Invoice Amount', 'Total Amount', 'Amount', 'Value'])
 
         if not bom_mat_col or not bom_rate_col:
-            st.error(f"⚠️ BOM Excel ({selected_bom_sheet}) mein Material/Rate column nahi mila.")
-            st.info("👉 Sidebar me *BOM Header Row Index* ko change karke (1, 2, ya 3) check karein.")
+            st.error(f"⚠️ BOM Excel ({selected_bom_sheet}) mein Material Code ya Rate column nahi mila.")
+            st.info("👉 Sidebar me *BOM Header Row Index* ko 1, 2, 3 ya 4 karke check karein.")
             st.write("BOM Sheet Preview:")
             st.dataframe(df_bom.head(5))
         elif not inward_mat_col or not inward_qty_col:
@@ -66,12 +65,16 @@ if bom_file and inward_file:
             st.dataframe(df_inward.head(5))
         else:
             # Clean BOM DataFrame
-            df_bom_clean = df_bom.rename(columns={bom_mat_col: 'Material Code', bom_rate_col: 'BOM Rate'})
-            df_bom_clean['Material Code'] = df_bom_clean['Material Code'].astype(str).str.strip()
+            df_bom_clean = df_bom.copy()
+            df_bom_clean['Material Code'] = df_bom_clean[bom_mat_col].astype(str).str.strip().str.upper()
+            df_bom_clean['BOM Rate'] = pd.to_numeric(df_bom_clean[bom_rate_col], errors='coerce').fillna(0)
+
+            # Drop duplicates if any on material code in BOM
+            df_bom_clean = df_bom_clean.drop_duplicates(subset=['Material Code'], keep='first')
 
             # Clean Inward DataFrame
             df_inward_clean = df_inward.copy()
-            df_inward_clean['Material Code'] = df_inward_clean[inward_mat_col].astype(str).str.strip()
+            df_inward_clean['Material Code'] = df_inward_clean[inward_mat_col].astype(str).str.strip().str.upper()
             df_inward_clean['Inward Qty'] = pd.to_numeric(df_inward_clean[inward_qty_col], errors='coerce').fillna(0)
 
             # Purchase Rate handling
@@ -89,7 +92,7 @@ if bom_file and inward_file:
             # Merge
             merged_df = pd.merge(df_inward_clean, df_bom_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
 
-            merged_df['BOM Rate'] = pd.to_numeric(merged_df['BOM Rate'], errors='coerce').fillna(0)
+            merged_df['BOM Rate'] = merged_df['BOM Rate'].fillna(0)
             merged_df['Price Difference (Per Unit)'] = merged_df['Purchase Rate'] - merged_df['BOM Rate']
             merged_df['Total Variance Amount'] = merged_df['Price Difference (Per Unit)'] * merged_df['Inward Qty']
 
