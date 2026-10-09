@@ -27,40 +27,37 @@ def find_column(df, possible_names):
                 return col
     return None
 
-def read_excel_with_dynamic_header(file_obj, possible_headers):
+def read_excel_smart_all_sheets(file_obj, keywords):
     """
-    Scans the Excel sheet row by row to find where the actual header table starts.
+    Scans all sheets and rows in an Excel file to find the valid table header.
     """
     xls = pd.ExcelFile(file_obj)
-    # Read the first sheet
-    df_raw = pd.read_excel(xls, sheet_name=0, header=None)
     
-    header_row_index = None
-    
-    # Iterate over rows to find matching column names
-    for idx, row in df_raw.iterrows():
-        row_values = [str(val).strip().lower() for val in row.values if pd.notna(val)]
-        # Check if any target header keyword exists in this row
-        match_count = sum(1 for val in row_values if any(h.lower() in val for h in possible_headers))
-        if match_count >= 1:
-            header_row_index = idx
-            break
-            
-    if header_row_index is not None:
-        df = pd.read_excel(xls, sheet_name=0, skiprows=header_row_index)
-    else:
-        df = pd.read_excel(xls, sheet_name=0)
+    for sheet in xls.sheet_names:
+        df_raw = pd.read_excel(xls, sheet_name=sheet, header=None)
         
-    return df
+        for idx, row in df_raw.iterrows():
+            # Check cell values in this row
+            row_cells = [str(val).strip().lower() for val in row.values if pd.notna(val)]
+            match_found = any(kw.lower() in cell for cell in row_cells for kw in keywords)
+            
+            if match_found:
+                df = pd.read_excel(xls, sheet_name=sheet, skiprows=idx)
+                # Ensure df is not empty and has valid columns
+                if not df.empty and len(df.columns) > 1:
+                    return df, sheet
+                    
+    # Fallback if no header keyword was found
+    df_first = pd.read_excel(xls, sheet_name=0)
+    return df_first, xls.sheet_names[0]
 
 if bom_file and inward_file:
     try:
-        # Load files with auto header detection
-        bom_keywords = ['material', 'item code', 'part no', 'code', 'rate', 'price', 'basic rate', 'amount']
+        bom_keywords = ['material', 'item code', 'part', 'code', 'rate', 'price', 'basic rate', 'amount']
         inward_keywords = ['item code', 'material', 'received qty', 'qty', 'quantity', 'invoice']
 
-        df_bom = read_excel_with_dynamic_header(bom_file, bom_keywords)
-        df_inward = read_excel_with_dynamic_header(inward_file, inward_keywords)
+        df_bom, bom_sheet = read_excel_smart_all_sheets(bom_file, bom_keywords)
+        df_inward, inward_sheet = read_excel_smart_all_sheets(inward_file, inward_keywords)
 
         # Smart column detection for BOM
         bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Item code', 'Part No', 'Material_Code', 'Code'])
@@ -73,9 +70,9 @@ if bom_file and inward_file:
         inward_amount_col = find_column(df_inward, ['Total Invoice Amount', 'Total Amount', 'Amount', 'Value'])
 
         if not bom_mat_col or not bom_rate_col:
-            st.error(f"⚠️ BOM Excel mein Material Code ya Rate column nahi mila. Found columns: {list(df_bom.columns)}")
+            st.error(f"⚠️ BOM Excel ({bom_sheet}) mein Material Code ya Rate column nahi mila. Detected headers: {list(df_bom.columns)}")
         elif not inward_mat_col or not inward_qty_col:
-            st.error(f"⚠️ Inward Excel mein 'Item code' ya 'Received qty' column nahi mila. Found columns: {list(df_inward.columns)}")
+            st.error(f"⚠️ Inward Excel ({inward_sheet}) mein 'Item code' ya 'Received qty' column nahi mila. Detected headers: {list(df_inward.columns)}")
         else:
             # Clean BOM DataFrame
             df_bom_clean = df_bom.rename(columns={bom_mat_col: 'Material Code', bom_rate_col: 'BOM Rate'})
