@@ -28,15 +28,17 @@ def find_column(df, possible_names):
     return None
 
 def load_excel_smart(file_obj, sheet_name=0):
-    # Reads Excel by auto-detecting the real header row if top rows contain titles/blank spaces
     xls = pd.ExcelFile(file_obj)
     df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
     
     header_idx = 0
     for idx, row in df_raw.iterrows():
-        row_str = row.astype(str).str.lower().to_list()
-        # Look for typical header indicators
-        if any(keyword in ' '.join(row_str) for keyword in ['material', 'item code', 'part', 'code', 'rate', 'price', 'description']):
+        # Safely convert all row items to lowercase string, ignoring NaNs/floats
+        row_str = [str(val).lower() for val in row.values if pd.notna(val)]
+        combined_text = ' '.join(row_str)
+        
+        # Check for typical column name keywords
+        if any(keyword in combined_text for keyword in ['material', 'item code', 'part', 'code', 'rate', 'price', 'description', 'received qty']):
             header_idx = idx
             break
             
