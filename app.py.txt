@@ -1,0 +1,68 @@
+import streamlit as st
+import pandas as pd
+import io
+
+st.set_page_config(page_title="Crompton BOM Variance Portal", layout="wide")
+
+st.title("⚡ Crompton Material & BOM Variance Portal")
+st.write("Monthly Inward, Outward aur BOM rates compare karke instant Variance Report download karein.")
+
+# Sidebar for Master BOM Management
+st.sidebar.header("1. Master BOM Setup (Quarterly)")
+bom_file = st.sidebar.file_uploader("Upload Crompton Master BOM Excel", type=["xlsx", "xls"])
+
+st.header("2. Monthly Processing")
+col1, col2 = st.columns(2)
+
+with col1:
+    inward_file = st.file_uploader("Upload Monthly Inward Excel", type=["xlsx", "xls"])
+
+with col2:
+    outward_file = st.file_uploader("Upload Monthly Outward Excel (Optional)", type=["xlsx", "xls"])
+
+if bom_file and inward_file:
+    try:
+        df_bom = pd.read_excel(bom_file)
+        df_inward = pd.read_excel(inward_file)
+
+        # Basic processing
+        merged_df = pd.merge(df_inward, df_bom, on='Material Code', how='left')
+
+        if 'Purchase Rate' in merged_df.columns and 'BOM Rate' in merged_df.columns:
+            merged_df['Price Difference (Per Unit)'] = merged_df['Purchase Rate'] - merged_df['BOM Rate']
+            merged_df['Total Variance Amount'] = merged_df['Price Difference (Per Unit)'] * merged_df['Inward Qty']
+
+            total_inward_cost = (merged_df['Inward Qty'] * merged_df['Purchase Rate']).sum()
+            total_bom_cost = (merged_df['Inward Qty'] * merged_df['BOM Rate']).sum()
+            net_variance = merged_df['Total Variance Amount'].sum()
+
+            st.markdown("---")
+            st.subheader("📊 Summary Overview")
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Purchase Cost", f"₹ {total_inward_cost:,.2f}")
+            m2.metric("Total BOM Allowed Cost", f"₹ {total_bom_cost:,.2f}")
+            m3.metric("Net Variance (Difference)", f"₹ {net_variance:,.2f}")
+
+            st.markdown("---")
+            st.subheader("📋 Detailed Material Variance Table")
+            st.dataframe(merged_df)
+
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                merged_df.to_excel(writer, index=False, sheet_name='Variance Report')
+                if outward_file:
+                    df_outward = pd.read_excel(outward_file)
+                    df_outward.to_excel(writer, index=False, sheet_name='Outward Summary')
+
+            st.download_button(
+                label="📥 Download Final Report Excel (for Crompton)",
+                data=buffer.getvalue(),
+                file_name="Crompton_BOM_Variance_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        else:
+            st.error("Excel columns check karein! Columns name 'Material Code', 'BOM Rate', 'Purchase Rate', 'Inward Qty' hone chahiye.")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
