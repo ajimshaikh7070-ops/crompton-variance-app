@@ -21,29 +21,47 @@ with col2:
 
 def find_column(df, possible_names):
     for col in df.columns:
-        if str(col).strip().lower() in [name.lower() for name in possible_names]:
-            return col
+        clean_col = str(col).strip().lower()
+        for name in possible_names:
+            if name.lower() in clean_col:
+                return col
     return None
+
+def load_excel_smart(file_obj, sheet_name=0):
+    # Reads Excel by auto-detecting the real header row if top rows contain titles/blank spaces
+    xls = pd.ExcelFile(file_obj)
+    df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+    
+    header_idx = 0
+    for idx, row in df_raw.iterrows():
+        row_str = row.astype(str).str.lower().to_list()
+        # Look for typical header indicators
+        if any(keyword in ' '.join(row_str) for keyword in ['material', 'item code', 'part', 'code', 'rate', 'price', 'description']):
+            header_idx = idx
+            break
+            
+    df = pd.read_excel(xls, sheet_name=sheet_name, skiprows=header_idx)
+    return df
 
 if bom_file and inward_file:
     try:
-        df_bom = pd.read_excel(bom_file)
-        df_inward = pd.read_excel(inward_file, sheet_name=0)
+        df_bom = load_excel_smart(bom_file)
+        df_inward = load_excel_smart(inward_file)
 
         # Smart column detection for BOM
-        bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Item code', 'Part No', 'Material_Code'])
-        bom_rate_col = find_column(df_bom, ['BOM Rate', 'Rate', 'BOM_Rate', 'Unit Rate', 'Price', 'Basic Rate'])
+        bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Item code', 'Part No', 'Material_Code', 'Code'])
+        bom_rate_col = find_column(df_bom, ['BOM Rate', 'Rate', 'BOM_Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount'])
 
         # Smart column detection for Inward Sheet
-        inward_mat_col = find_column(df_inward, ['Item code', 'Item Code', 'Material Code', 'Material', 'Part No'])
+        inward_mat_col = find_column(df_inward, ['Item code', 'Item Code', 'Material Code', 'Material', 'Part No', 'Code'])
         inward_qty_col = find_column(df_inward, ['Received qty', 'Inward Qty', 'Qty', 'Quantity', 'Inward_Qty', 'Received Qty'])
         inward_rate_col = find_column(df_inward, ['Purchase Rate', 'Actual Rate', 'Rate', 'Unit Rate', 'Price'])
         inward_amount_col = find_column(df_inward, ['Total Invoice Amount', 'Total Amount', 'Amount', 'Value'])
 
         if not bom_mat_col or not bom_rate_col:
-            st.error(f"⚠️ BOM Excel mein Material Code ya Rate column nahi mila. Uploaded columns: {list(df_bom.columns)}")
+            st.error(f"⚠️ BOM Excel mein Material Code ya Rate column nahi mila. Detected headers: {list(df_bom.columns)}")
         elif not inward_mat_col or not inward_qty_col:
-            st.error(f"⚠️ Inward Excel mein 'Item code' ya 'Received qty' column nahi mila. Uploaded columns: {list(df_inward.columns)}")
+            st.error(f"⚠️ Inward Excel mein 'Item code' ya 'Received qty' column nahi mila. Detected headers: {list(df_inward.columns)}")
         else:
             # Clean BOM DataFrame
             df_bom_clean = df_bom.rename(columns={bom_mat_col: 'Material Code', bom_rate_col: 'BOM Rate'})
@@ -59,7 +77,6 @@ if bom_file and inward_file:
                 df_inward_clean['Purchase Rate'] = pd.to_numeric(df_inward_clean[inward_rate_col], errors='coerce').fillna(0)
             elif inward_amount_col:
                 df_inward_clean['Total Amount'] = pd.to_numeric(df_inward_clean[inward_amount_col], errors='coerce').fillna(0)
-                # Calculate calculated unit rate where quantity > 0
                 df_inward_clean['Purchase Rate'] = df_inward_clean.apply(
                     lambda row: (row['Total Amount'] / row['Inward Qty']) if row['Inward Qty'] > 0 and row['Total Amount'] > 0 else 0,
                     axis=1
