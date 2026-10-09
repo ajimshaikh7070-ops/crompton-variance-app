@@ -27,52 +27,43 @@ def find_column(df, possible_names):
                 return col
     return None
 
-def read_excel_smart_all_sheets(file_obj, keywords):
-    """
-    Scans all sheets and rows in an Excel file to find the valid table header.
-    """
+def process_file_with_skip(file_obj, header_row=0, sheet_name=0):
     xls = pd.ExcelFile(file_obj)
-    
-    for sheet in xls.sheet_names:
-        df_raw = pd.read_excel(xls, sheet_name=sheet, header=None)
-        
-        for idx, row in df_raw.iterrows():
-            # Check cell values in this row
-            row_cells = [str(val).strip().lower() for val in row.values if pd.notna(val)]
-            match_found = any(kw.lower() in cell for cell in row_cells for kw in keywords)
-            
-            if match_found:
-                df = pd.read_excel(xls, sheet_name=sheet, skiprows=idx)
-                # Ensure df is not empty and has valid columns
-                if not df.empty and len(df.columns) > 1:
-                    return df, sheet
-                    
-    # Fallback if no header keyword was found
-    df_first = pd.read_excel(xls, sheet_name=0)
-    return df_first, xls.sheet_names[0]
+    sheet = sheet_name if sheet_name in xls.sheet_names else xls.sheet_names[0]
+    df = pd.read_excel(xls, sheet_name=sheet, skiprows=header_row)
+    return df, xls.sheet_names, sheet
 
 if bom_file and inward_file:
     try:
-        bom_keywords = ['material', 'item code', 'part', 'code', 'rate', 'price', 'basic rate', 'amount']
-        inward_keywords = ['item code', 'material', 'received qty', 'qty', 'quantity', 'invoice']
+        # Side controls for header rows if needed
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("⚙️ Sheet & Header Settings")
+        
+        bom_xls = pd.ExcelFile(bom_file)
+        selected_bom_sheet = st.sidebar.selectbox("Select BOM Sheet", bom_xls.sheet_names)
+        bom_header_row = st.sidebar.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=20, value=2, step=1)
+        
+        df_bom, _, _ = process_file_with_skip(bom_file, header_row=bom_header_row, sheet_name=selected_bom_sheet)
+        df_inward, _, _ = process_file_with_skip(inward_file, header_row=0)
 
-        df_bom, bom_sheet = read_excel_smart_all_sheets(bom_file, bom_keywords)
-        df_inward, inward_sheet = read_excel_smart_all_sheets(inward_file, inward_keywords)
+        # Smart column detection
+        bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Part No', 'Code', 'Item'])
+        bom_rate_col = find_column(df_bom, ['BOM Rate', 'Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount'])
 
-        # Smart column detection for BOM
-        bom_mat_col = find_column(df_bom, ['Material Code', 'Material', 'Item Code', 'Item code', 'Part No', 'Material_Code', 'Code'])
-        bom_rate_col = find_column(df_bom, ['BOM Rate', 'Rate', 'BOM_Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount'])
-
-        # Smart column detection for Inward Sheet
         inward_mat_col = find_column(df_inward, ['Item code', 'Item Code', 'Material Code', 'Material', 'Part No', 'Code'])
         inward_qty_col = find_column(df_inward, ['Received qty', 'Inward Qty', 'Qty', 'Quantity', 'Inward_Qty', 'Received Qty'])
         inward_rate_col = find_column(df_inward, ['Purchase Rate', 'Actual Rate', 'Rate', 'Unit Rate', 'Price'])
         inward_amount_col = find_column(df_inward, ['Total Invoice Amount', 'Total Amount', 'Amount', 'Value'])
 
         if not bom_mat_col or not bom_rate_col:
-            st.error(f"⚠️ BOM Excel ({bom_sheet}) mein Material Code ya Rate column nahi mila. Detected headers: {list(df_bom.columns)}")
+            st.error(f"⚠️ BOM Excel ({selected_bom_sheet}) mein Material/Rate column nahi mila.")
+            st.info("👉 Sidebar me *BOM Header Row Index* ko change karke (1, 2, ya 3) check karein.")
+            st.write("BOM Sheet Preview:")
+            st.dataframe(df_bom.head(5))
         elif not inward_mat_col or not inward_qty_col:
-            st.error(f"⚠️ Inward Excel ({inward_sheet}) mein 'Item code' ya 'Received qty' column nahi mila. Detected headers: {list(df_inward.columns)}")
+            st.error(f"⚠️ Inward Excel mein 'Item code' ya 'Received qty' column nahi mila.")
+            st.write("Inward Sheet Preview:")
+            st.dataframe(df_inward.head(5))
         else:
             # Clean BOM DataFrame
             df_bom_clean = df_bom.rename(columns={bom_mat_col: 'Material Code', bom_rate_col: 'BOM Rate'})
@@ -83,7 +74,7 @@ if bom_file and inward_file:
             df_inward_clean['Material Code'] = df_inward_clean[inward_mat_col].astype(str).str.strip()
             df_inward_clean['Inward Qty'] = pd.to_numeric(df_inward_clean[inward_qty_col], errors='coerce').fillna(0)
 
-            # Handle Purchase Rate / Unit Price
+            # Purchase Rate handling
             if inward_rate_col:
                 df_inward_clean['Purchase Rate'] = pd.to_numeric(df_inward_clean[inward_rate_col], errors='coerce').fillna(0)
             elif inward_amount_col:
@@ -95,7 +86,7 @@ if bom_file and inward_file:
             else:
                 df_inward_clean['Purchase Rate'] = 0
 
-            # Merge Inward with BOM
+            # Merge
             merged_df = pd.merge(df_inward_clean, df_bom_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
 
             merged_df['BOM Rate'] = pd.to_numeric(merged_df['BOM Rate'], errors='coerce').fillna(0)
