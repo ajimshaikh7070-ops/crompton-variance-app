@@ -156,7 +156,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.title("📄 SHRAVANI ELECTRICALS - Tax Invoice Generator")
-    st.write("Neeche diye gaye details fill karein aur invoice ko database me save karein.")
+    st.write("Neeche diye gaye details fill karein, database me save karein aur instant download karein.")
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -191,14 +191,46 @@ with tab2:
     sc3.metric("SGST (9%)", f"₹ {sgst_amount:,.2f}")
     sc4.metric("Grand Total", f"₹ {grand_total:,.2f}")
 
-    if st.button("💾 Save Invoice to Database"):
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO invoices (invoice_no, invoice_date, vehicle_no, transport_name, po_no, description, material_code, qty, rate, basic_amount, cgst, sgst, grand_total)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (inv_no, str(inv_date), vehicle_no, transport_name, po_no, desc, mat_code, qty, rate, basic_amount, cgst_amount, sgst_amount, grand_total))
-        conn.commit()
-        st.success(f"✅ Invoice #{inv_no} successfully database me save ho gaya!")
+    b_col1, b_col2 = st.columns(2)
+
+    with b_col1:
+        if st.button("💾 Save Invoice to Database"):
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO invoices (invoice_no, invoice_date, vehicle_no, transport_name, po_no, description, material_code, qty, rate, basic_amount, cgst, sgst, grand_total)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (inv_no, str(inv_date), vehicle_no, transport_name, po_no, desc, mat_code, qty, rate, basic_amount, cgst_amount, sgst_amount, grand_total))
+            conn.commit()
+            st.success(f"✅ Invoice #{inv_no} successfully database me save ho gaya!")
+
+    with b_col2:
+        # Prepare single invoice excel download
+        single_inv_df = pd.DataFrame([{
+            "Invoice No": inv_no,
+            "Invoice Date": str(inv_date),
+            "Vehicle No": vehicle_no,
+            "Transport": transport_name,
+            "PO No": po_no,
+            "Description": desc,
+            "Material Code": mat_code,
+            "Quantity": qty,
+            "Rate": rate,
+            "Basic Amount": basic_amount,
+            "CGST (9%)": cgst_amount,
+            "SGST (9%)": sgst_amount,
+            "Grand Total": grand_total
+        }])
+        
+        single_buffer = io.BytesIO()
+        with pd.ExcelWriter(single_buffer, engine='openpyxl') as writer:
+            single_inv_df.to_excel(writer, index=False, sheet_name='Tax Invoice')
+
+        st.download_button(
+            label="📥 Download This Invoice as Excel",
+            data=single_buffer.getvalue(),
+            file_name=f"Tax_Invoice_{inv_no}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     # Live Preview
     st.markdown("---")
@@ -246,7 +278,6 @@ with tab3:
     if not df_history.empty:
         st.dataframe(df_history)
         
-        # Download history as Excel
         hist_buffer = io.BytesIO()
         with pd.ExcelWriter(hist_buffer, engine='openpyxl') as writer:
             df_history.to_excel(writer, index=False, sheet_name='Invoice_History')
