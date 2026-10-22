@@ -290,8 +290,10 @@ with tab6:
         try:
             v_xls = pd.ExcelFile(v_bom)
             v_sheet_names = v_xls.sheet_names
-            v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=1 if len(v_sheet_names) > 1 else 0, key="v_sheet_sel")
-            v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=20, value=2, step=1, key="v_skip_input")
+            # Default select 'BOM' sheet if available
+            default_sheet_idx = v_sheet_names.index('BOM') if 'BOM' in v_sheet_names else (1 if len(v_sheet_names) > 1 else 0)
+            v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=default_sheet_idx, key="v_sheet_sel")
+            v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=20, value=31, step=1, key="v_skip_input")
             
             df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
             df_v_inward = pd.read_excel(v_in, sheet_name=0)
@@ -299,26 +301,25 @@ with tab6:
             st.markdown("---")
             st.subheader("🛠️ Column Mapping Settings")
             
-            # Smart defaults based on your sheets
             bom_cols = list(df_v_bom.columns)
             inward_cols = list(df_v_inward.columns)
 
             col_map1, col_map2 = st.columns(2)
             with col_map1:
                 st.write("### BOM Sheet Mapping")
-                b_mat_default = next((c for c in bom_cols if any(k in str(c).lower() for k in ['item code', 'material code', 'code', 'part'])), bom_cols[0])
-                b_rat_default = next((c for c in bom_cols if any(k in str(c).lower() for k in ['rate', 'price', 'amount'])), bom_cols[-1])
+                b_mat_default = next((c for c in bom_cols if any(k in str(c).upper() for k in ['ITEM CODE', 'MATERIAL CODE', 'CODE'])), bom_cols[3] if len(bom_cols)>3 else bom_cols[0])
+                b_rat_default = next((c for c in bom_cols if any(k in str(c).upper() for k in ['RATE', 'PRICE'])), bom_cols[9] if len(bom_cols)>9 else bom_cols[-1])
                 
-                selected_b_mat = st.selectbox("BOM Material / Item Code Column", bom_cols, index=bom_cols.index(b_mat_default) if b_mat_default in bom_cols else 0)
+                selected_b_mat = st.selectbox("BOM Item Code Column", bom_cols, index=bom_cols.index(b_mat_default) if b_mat_default in bom_cols else 0)
                 selected_b_rat = st.selectbox("BOM Rate Column", bom_cols, index=bom_cols.index(b_rat_default) if b_rat_default in bom_cols else 0)
             
             with col_map2:
                 st.write("### Inward Sheet Mapping")
-                i_mat_default = next((c for c in inward_cols if any(k in str(c).lower() for k in ['item code', 'material', 'code'])), inward_cols[0])
-                i_qty_default = next((c for c in inward_cols if any(k in str(c).lower() for k in ['qty', 'quantity', 'received'])), inward_cols[0])
-                i_rat_default = next((c for c in inward_cols if any(k in str(c).lower() for k in ['rate per unit', 'purchase rate', 'rate'])), inward_cols[0])
+                i_mat_default = next((c for c in inward_cols if any(k in str(c).upper() for k in ['ITEM CODE', 'MATERIAL', 'CODE'])), inward_cols[0])
+                i_qty_default = next((c for c in inward_cols if any(k in str(c).upper() for k in ['QTY', 'QUANTITY', 'RECEIVED'])), inward_cols[0])
+                i_rat_default = next((c for c in inward_cols if any(k in str(c).upper() for k in ['RATE PER UNIT', 'PURCHASE RATE', 'RATE'])), inward_cols[0])
 
-                selected_i_mat = st.selectbox("Inward Material / Item Code Column", inward_cols, index=inward_cols.index(i_mat_default) if i_mat_default in inward_cols else 0)
+                selected_i_mat = st.selectbox("Inward Item Code Column", inward_cols, index=inward_cols.index(i_mat_default) if i_mat_default in inward_cols else 0)
                 selected_i_qty = st.selectbox("Inward Quantity Column", inward_cols, index=inward_cols.index(i_qty_default) if i_qty_default in inward_cols else 0)
                 selected_i_rat = st.selectbox("Inward Rate Per Unit Column", inward_cols, index=inward_cols.index(i_rat_default) if i_rat_default in inward_cols else 0)
 
