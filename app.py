@@ -295,7 +295,8 @@ with tab6:
             default_sheet_idx = v_sheet_names.index('BOM') if 'BOM' in v_sheet_names else (1 if len(v_sheet_names) > 1 else 0)
             v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=default_sheet_idx, key="v_sheet_sel")
             
-            v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=50, value=31, step=1, key="v_skip_input")
+            # Default 0 set kiya hai kyunki BOM headers row 0 par hain
+            v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=50, value=0, step=1, key="v_skip_input")
             
             df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
             df_v_inward = pd.read_excel(v_in, sheet_name=0).ffill()
