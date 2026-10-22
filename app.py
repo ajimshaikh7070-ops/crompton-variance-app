@@ -277,11 +277,11 @@ with tab5:
         st.dataframe(pd.read_excel(xls_b, sheet_name=sh))
 
 # ==========================================
-# TAB 6: VARIANCE REPORT
+# TAB 6: VARIANCE REPORT (BOM & GST SEPARATE)
 # ==========================================
 with tab6:
-    st.title("⚡ Material Variance Report (Inward vs BOM)")
-    st.write("Inward purchase rates ko Master BOM rates ke sath compare karein aur GST calculations verify karein.")
+    st.title("⚡ Material Variance & GST Verification Portal")
+    st.write("BOM Rate Variance aur GST Calculations ko alag-alag analyze aur download karein.")
 
     col_v1, col_v2 = st.columns(2)
     with col_v1:
@@ -329,7 +329,7 @@ with tab6:
                 selected_i_qty = st.selectbox("Inward Quantity Column", inward_cols, index=inward_cols.index(i_qty_default) if i_qty_default in inward_cols else 0)
                 selected_i_rat = st.selectbox("Inward Rate Per Unit Column", inward_cols, index=inward_cols.index(i_rat_default) if i_rat_default in inward_cols else 0)
 
-            if st.button("🚀 Calculate Variance & Verify GST"):
+            if st.button("🚀 Process Reports"):
                 df_vb_clean = df_v_bom.copy()
                 df_vb_clean['Material Code'] = df_vb_clean[selected_b_mat].astype(str).str.strip().str.upper().str.replace(r'\.0$', '', regex=True)
                 df_vb_clean['BOM Rate'] = pd.to_numeric(df_vb_clean[selected_b_rat], errors='coerce').fillna(0)
@@ -340,17 +340,9 @@ with tab6:
                 df_vi_clean['Inward Qty'] = pd.to_numeric(df_vi_clean[selected_i_qty], errors='coerce').fillna(0)
                 df_vi_clean['Purchase Rate'] = pd.to_numeric(df_vi_clean[selected_i_rat], errors='coerce').fillna(0)
 
-                # Mathematical & GST Verification Calculations
-                df_vi_clean['Calculated Basic Amount'] = round(df_vi_clean['Inward Qty'] * df_vi_clean['Purchase Rate'], 2)
-                df_vi_clean['Calculated CGST (9%)'] = round(df_vi_clean['Calculated Basic Amount'] * 0.09, 2)
-                df_vi_clean['Calculated SGST (9%)'] = round(df_vi_clean['Calculated Basic Amount'] * 0.09, 2)
-                df_vi_clean['Calculated Grand Total'] = round(df_vi_clean['Calculated Basic Amount'] + df_vi_clean['Calculated CGST (9%)'] + df_vi_clean['Calculated SGST (9%)'], 2)
-
-                # Merge Inward with BOM Rates
+                # 1. BOM Rate Variance Table
                 merged_v = pd.merge(df_vi_clean, df_vb_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
                 merged_v['BOM Rate'] = merged_v['BOM Rate'].fillna(0)
-                
-                # Variance Calculations
                 merged_v['Price Difference (Per Unit)'] = merged_v['Purchase Rate'] - merged_v['BOM Rate']
                 merged_v['Total Variance Amount'] = merged_v['Price Difference (Per Unit)'] * merged_v['Inward Qty']
 
@@ -358,28 +350,52 @@ with tab6:
                 tot_bom = (merged_v['Inward Qty'] * merged_v['BOM Rate']).sum()
                 net_var = merged_v['Total Variance Amount'].sum()
 
+                # 2. GST Verification Table
+                df_gst = df_vi_clean.copy()
+                df_gst['Calculated Basic Amount'] = round(df_gst['Inward Qty'] * df_gst['Purchase Rate'], 2)
+                df_gst['Calculated CGST (9%)'] = round(df_gst['Calculated Basic Amount'] * 0.09, 2)
+                df_gst['Calculated SGST (9%)'] = round(df_gst['Calculated Basic Amount'] * 0.09, 2)
+                df_gst['Calculated Grand Total'] = round(df_gst['Calculated Basic Amount'] + df_gst['Calculated CGST (9%)'] + df_gst['Calculated SGST (9%)'], 2)
+
                 st.markdown("---")
                 v1, v2, v3 = st.columns(3)
                 v1.metric("Total Inward Purchase Cost", f"₹ {tot_inward:,.2f}")
                 v2.metric("Total BOM Allowed Cost", f"₹ {tot_bom:,.2f}")
-                
                 v_label = "Loss (Higher Purchase Rate)" if net_var > 0 else "Gain / Savings"
                 v3.metric(f"Net Variance ({v_label})", f"₹ {abs(net_var):,.2f}")
 
-                st.markdown("---")
-                st.subheader("📋 Detailed Variance & GST Verification Table")
-                st.dataframe(merged_v)
+                # Display Tabs inside Tab 6 for clear separation
+                r_tab1, r_tab2 = st.tabs(["📊 BOM Rate Variance Report", "💰 GST Calculation Verification Report"])
 
-                v_buffer = io.BytesIO()
-                with pd.ExcelWriter(v_buffer, engine='openpyxl') as writer:
-                    merged_v.to_excel(writer, index=False, sheet_name='Variance_GST_Report')
+                with r_tab1:
+                    st.subheader("📋 BOM Rate Variance Details")
+                    st.dataframe(merged_v)
 
-                st.download_button(
-                    label="📥 Download Verified Variance & GST Report Excel",
-                    data=v_buffer.getvalue(),
-                    file_name="Crompton_Variance_GST_Report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                    bom_buffer = io.BytesIO()
+                    with pd.ExcelWriter(bom_buffer, engine='openpyxl') as writer:
+                        merged_v.to_excel(writer, index=False, sheet_name='BOM_Variance_Report')
+
+                    st.download_button(
+                        label="📥 Download BOM Rate Variance Excel",
+                        data=bom_buffer.getvalue(),
+                        file_name="BOM_Rate_Variance_Report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
+                with r_tab2:
+                    st.subheader("📋 GST Calculation Verification Details")
+                    st.dataframe(df_gst)
+
+                    gst_buffer = io.BytesIO()
+                    with pd.ExcelWriter(gst_buffer, engine='openpyxl') as writer:
+                        df_gst.to_excel(writer, index=False, sheet_name='GST_Verification_Report')
+
+                    st.download_button(
+                        label="📥 Download GST Verification Excel",
+                        data=gst_buffer.getvalue(),
+                        file_name="GST_Verification_Report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
         except Exception as e:
             st.error(f"Calculation Error: {e}")
