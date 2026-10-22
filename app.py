@@ -277,10 +277,98 @@ with tab5:
 # TAB 6: VARIANCE REPORT
 # ==========================================
 with tab6:
-    st.title("⚡ Material Variance Report")
-    v_bom = st.file_uploader("Upload BOM for Variance", type=["xlsx", "xls"], key="vb")
-    v_in = st.file_uploader("Upload Inward for Variance", type=["xlsx", "xls"], key="vi")
+    st.title("⚡ Material Variance Report (Inward vs BOM)")
+    st.write("Inward purchase rates ko Master BOM rates ke sath compare karke Loss/Gain check karein.")
+
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        v_bom = st.file_uploader("Upload BOM for Variance", type=["xlsx", "xls"], key="vb")
+    with col_v2:
+        v_in = st.file_uploader("Upload Inward for Variance", type=["xlsx", "xls"], key="vi")
+
+    def find_col_safe(df, possible_names):
+        for col in df.columns:
+            clean_col = str(col).strip().lower()
+            for name in possible_names:
+                if name.lower() in clean_col:
+                    return col
+        return None
+
     if v_bom and v_in:
-        df_b = pd.read_excel(v_bom, sheet_name=1 if len(pd.ExcelFile(v_bom).sheet_names)>1 else 0)
-        df_i = pd.read_excel(v_in)
-        st.success("Files loaded successfully!")
+        try:
+            v_xls = pd.ExcelFile(v_bom)
+            v_sheet_names = v_xls.sheet_names
+            v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=1 if len(v_sheet_names)>1 else 0, key="v_sheet_sel")
+            v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=20, value=2, step=1, key="v_skip_input")
+            
+            df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
+            df_v_inward = pd.read_excel(v_in, sheet_name=0)
+
+            b_mat = find_col_safe(df_v_bom, ['Material Code', 'Material', 'Item Code', 'Part No', 'Code', 'Item'])
+            b_rat = find_col_safe(df_v_bom, ['BOM Rate', 'Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount', 'PO Rate'])
+
+            i_mat = find_col_safe(df_v_inward, ['Item code', 'Item Code', 'Material Code', 'Material', 'Part No', 'Code'])
+            i_qty = find_col_safe(df_v_inward, ['Received qty', 'Inward Qty', 'Qty', 'Quantity', 'Received Qty'])
+            i_rat = find_col_safe(df_v_inward, ['Purchase Rate', 'Actual Rate', 'Rate', 'Unit Rate'])
+            i_amt = find_col_safe(df_v_inward, ['Total Invoice Amount', 'Total Amount', 'Amount', 'Value'])
+
+            if not b_mat or not b_rat:
+                st.error(f"⚠️ BOM sheet ({v_sheet}) me Material Code ya Rate column nahi mila. Sidebar me 'BOM Header Row Index' (0, 1, 2, 3) change karke check karein.")
+                st.write("BOM Preview:", df_v_bom.head(5))
+            elif not i_mat or not i_qty:
+                st.error("⚠️ Inward sheet me Item code ya Received qty column nahi mila.")
+                st.write("Inward Preview:", df_v_inward.head(5))
+            else:
+                df_vb_clean = df_v_bom.copy()
+                df_vb_clean['Material Code'] = df_vb_clean[b_mat].astype(str).str.strip().str.upper()
+                df_vb_clean['BOM Rate'] = pd.to_numeric(df_vb_clean[b_rat], errors='coerce').fillna(0)
+                df_vb_clean = df_vb_clean.drop_duplicates(subset=['Material Code'], keep='first')
+
+                df_vi_clean = df_v_inward.copy()
+                df_vi_clean['Material Code'] = df_vi_clean[i_mat].astype(str).str.strip().str.upper()
+                df_vi_clean['Inward Qty'] = pd.to_numeric(df_vi_clean[i_qty], errors='coerce').fillna(0)
+
+                if i_rat:
+                    df_vi_clean['Purchase Rate'] = pd.to_numeric(df_vi_clean[i_rat], errors='coerce').fillna(0)
+                elif i_amt:
+                    df_vi_clean['Total Amount'] = pd.to_numeric(df_vi_clean[i_amt], errors='coerce').fillna(0)
+                    df_vi_clean['Purchase Rate'] = df_vi_clean.apply(
+                        lambda row: (row['Total Amount'] / row['Inward Qty']) if row['Inward Qty'] > 0 and row['Total Amount'] > 0 else 0, axis=1
+                    )
+                else:
+                    df_vi_clean['Purchase Rate'] = 0
+
+                merged_v = pd.merge(df_vi_clean, df_vb_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
+                merged_v['BOM Rate'] = merged_v['BOM Rate'].fillna(0)
+                merged_v['Price Difference (Per Unit)'] = merged_v['Purchase Rate'] - merged_v['BOM Rate']
+                merged_v['Total Variance Amount'] = merged_v['Price Difference (Per Unit)'] * merged_v['Inward Qty']
+
+                tot_inward = (merged_v['Inward Qty'] * merged_v['Purchase Rate']).sum()
+                tot_bom = (merged_v['Inward Qty'] * merged_v['BOM Rate']).sum()
+                net_var = merged_v['Total Variance Amount'].sum()
+
+                st.markdown("---")
+                v1, v2, v3 = st.columns(3)
+                v1.metric("Total Inward Cost", f"₹ {tot_inward:,.2f}")
+                v2.metric("Total BOM Allowed Cost", f"₹ {tot_bom:,.2f}")
+                
+                v_label = "Loss (Higher Purchase Rate)" if net_var > 0 else "Gain / Savings"
+                v3.metric(f"Net Variance ({v_label})", f"₹ {abs(net_var):,.2f}")
+
+                st.markdown("---")
+                st.subheader("📋 Detailed Variance Table")
+                st.dataframe(merged_v)
+
+                v_buffer = io.BytesIO()
+                with pd.ExcelWriter(v_buffer, engine='openpyxl') as writer:
+                    merged_v.to_excel(writer, index=False, sheet_name='Variance Report')
+
+                st.download_button(
+                    label="📥 Download Variance Report Excel",
+                    data=v_buffer.getvalue(),
+                    file_name="Crompton_Variance_Report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+        except Exception as e:
+            st.error(f"Variance Calculation Error: {e}")
