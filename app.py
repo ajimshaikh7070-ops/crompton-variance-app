@@ -297,21 +297,32 @@ with tab6:
             df_v_inward = pd.read_excel(v_in, sheet_name=0)
 
             st.markdown("---")
-            st.subheader("🛠️ Manual Column Mapping (Agar Auto-Detect na ho)")
+            st.subheader("🛠️ Column Mapping Settings")
             
+            # Smart defaults based on your sheets
+            bom_cols = list(df_v_bom.columns)
+            inward_cols = list(df_v_inward.columns)
+
             col_map1, col_map2 = st.columns(2)
             with col_map1:
-                bom_cols = list(df_v_bom.columns)
-                selected_b_mat = st.selectbox("Select BOM Material Code Column", bom_cols, index=2 if len(bom_cols)>2 else 0)
-                selected_b_rat = st.selectbox("Select BOM Rate Column", bom_cols, index=len(bom_cols)-2 if len(bom_cols)>2 else 0)
+                st.write("### BOM Sheet Mapping")
+                b_mat_default = next((c for c in bom_cols if any(k in str(c).lower() for k in ['item code', 'material code', 'code', 'part'])), bom_cols[0])
+                b_rat_default = next((c for c in bom_cols if any(k in str(c).lower() for k in ['rate', 'price', 'amount'])), bom_cols[-1])
+                
+                selected_b_mat = st.selectbox("BOM Material / Item Code Column", bom_cols, index=bom_cols.index(b_mat_default) if b_mat_default in bom_cols else 0)
+                selected_b_rat = st.selectbox("BOM Rate Column", bom_cols, index=bom_cols.index(b_rat_default) if b_rat_default in bom_cols else 0)
             
             with col_map2:
-                inward_cols = list(df_v_inward.columns)
-                selected_i_mat = st.selectbox("Select Inward Item Code Column", inward_cols, index=0)
-                selected_i_qty = st.selectbox("Select Inward Qty Column", inward_cols, index=1 if len(inward_cols)>1 else 0)
-                selected_i_rat = st.selectbox("Select Inward Rate/Amount Column", inward_cols, index=len(inward_cols)-1 if len(inward_cols)>0 else 0)
+                st.write("### Inward Sheet Mapping")
+                i_mat_default = next((c for c in inward_cols if any(k in str(c).lower() for k in ['item code', 'material', 'code'])), inward_cols[0])
+                i_qty_default = next((c for c in inward_cols if any(k in str(c).lower() for k in ['qty', 'quantity', 'received'])), inward_cols[0])
+                i_rat_default = next((c for c in inward_cols if any(k in str(c).lower() for k in ['rate per unit', 'purchase rate', 'rate'])), inward_cols[0])
 
-            if st.button("🚀 Calculate Variance Report"):
+                selected_i_mat = st.selectbox("Inward Material / Item Code Column", inward_cols, index=inward_cols.index(i_mat_default) if i_mat_default in inward_cols else 0)
+                selected_i_qty = st.selectbox("Inward Quantity Column", inward_cols, index=inward_cols.index(i_qty_default) if i_qty_default in inward_cols else 0)
+                selected_i_rat = st.selectbox("Inward Rate Per Unit Column", inward_cols, index=inward_cols.index(i_rat_default) if i_rat_default in inward_cols else 0)
+
+            if st.button("🚀 Calculate Variance & Loss/Gain"):
                 df_vb_clean = df_v_bom.copy()
                 df_vb_clean['Material Code'] = df_vb_clean[selected_b_mat].astype(str).str.strip().str.upper()
                 df_vb_clean['BOM Rate'] = pd.to_numeric(df_vb_clean[selected_b_rat], errors='coerce').fillna(0)
@@ -322,8 +333,11 @@ with tab6:
                 df_vi_clean['Inward Qty'] = pd.to_numeric(df_vi_clean[selected_i_qty], errors='coerce').fillna(0)
                 df_vi_clean['Purchase Rate'] = pd.to_numeric(df_vi_clean[selected_i_rat], errors='coerce').fillna(0)
 
+                # Merge Inward with BOM Rates
                 merged_v = pd.merge(df_vi_clean, df_vb_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
                 merged_v['BOM Rate'] = merged_v['BOM Rate'].fillna(0)
+                
+                # Calculations
                 merged_v['Price Difference (Per Unit)'] = merged_v['Purchase Rate'] - merged_v['BOM Rate']
                 merged_v['Total Variance Amount'] = merged_v['Price Difference (Per Unit)'] * merged_v['Inward Qty']
 
@@ -333,14 +347,14 @@ with tab6:
 
                 st.markdown("---")
                 v1, v2, v3 = st.columns(3)
-                v1.metric("Total Inward Cost", f"₹ {tot_inward:,.2f}")
+                v1.metric("Total Inward Purchase Cost", f"₹ {tot_inward:,.2f}")
                 v2.metric("Total BOM Allowed Cost", f"₹ {tot_bom:,.2f}")
                 
                 v_label = "Loss (Higher Purchase Rate)" if net_var > 0 else "Gain / Savings"
                 v3.metric(f"Net Variance ({v_label})", f"₹ {abs(net_var):,.2f}")
 
                 st.markdown("---")
-                st.subheader("📋 Detailed Variance Table")
+                st.subheader("📋 Detailed Variance Table (Inward vs BOM)")
                 st.dataframe(merged_v)
 
                 v_buffer = io.BytesIO()
