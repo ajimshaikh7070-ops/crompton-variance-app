@@ -286,57 +286,41 @@ with tab6:
     with col_v2:
         v_in = st.file_uploader("Upload Inward for Variance", type=["xlsx", "xls"], key="vi")
 
-    def find_col_safe(df, possible_names):
-        for col in df.columns:
-            clean_col = str(col).strip().lower()
-            for name in possible_names:
-                if name.lower() in clean_col:
-                    return col
-        return None
-
     if v_bom and v_in:
         try:
             v_xls = pd.ExcelFile(v_bom)
             v_sheet_names = v_xls.sheet_names
-            v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=1 if len(v_sheet_names)>1 else 0, key="v_sheet_sel")
+            v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=1 if len(v_sheet_names) > 1 else 0, key="v_sheet_sel")
             v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=20, value=2, step=1, key="v_skip_input")
             
             df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
             df_v_inward = pd.read_excel(v_in, sheet_name=0)
 
-            b_mat = find_col_safe(df_v_bom, ['Material Code', 'Material', 'Item Code', 'Part No', 'Code', 'Item'])
-            b_rat = find_col_safe(df_v_bom, ['BOM Rate', 'Rate', 'Unit Rate', 'Price', 'Basic Rate', 'Amount', 'PO Rate'])
+            st.markdown("---")
+            st.subheader("🛠️ Manual Column Mapping (Agar Auto-Detect na ho)")
+            
+            col_map1, col_map2 = st.columns(2)
+            with col_map1:
+                bom_cols = list(df_v_bom.columns)
+                selected_b_mat = st.selectbox("Select BOM Material Code Column", bom_cols, index=2 if len(bom_cols)>2 else 0)
+                selected_b_rat = st.selectbox("Select BOM Rate Column", bom_cols, index=len(bom_cols)-2 if len(bom_cols)>2 else 0)
+            
+            with col_map2:
+                inward_cols = list(df_v_inward.columns)
+                selected_i_mat = st.selectbox("Select Inward Item Code Column", inward_cols, index=0)
+                selected_i_qty = st.selectbox("Select Inward Qty Column", inward_cols, index=1 if len(inward_cols)>1 else 0)
+                selected_i_rat = st.selectbox("Select Inward Rate/Amount Column", inward_cols, index=len(inward_cols)-1 if len(inward_cols)>0 else 0)
 
-            i_mat = find_col_safe(df_v_inward, ['Item code', 'Item Code', 'Material Code', 'Material', 'Part No', 'Code'])
-            i_qty = find_col_safe(df_v_inward, ['Received qty', 'Inward Qty', 'Qty', 'Quantity', 'Received Qty'])
-            i_rat = find_col_safe(df_v_inward, ['Purchase Rate', 'Actual Rate', 'Rate', 'Unit Rate'])
-            i_amt = find_col_safe(df_v_inward, ['Total Invoice Amount', 'Total Amount', 'Amount', 'Value'])
-
-            if not b_mat or not b_rat:
-                st.error(f"⚠️ BOM sheet ({v_sheet}) me Material Code ya Rate column nahi mila. Sidebar me 'BOM Header Row Index' (0, 1, 2, 3) change karke check karein.")
-                st.write("BOM Preview:", df_v_bom.head(5))
-            elif not i_mat or not i_qty:
-                st.error("⚠️ Inward sheet me Item code ya Received qty column nahi mila.")
-                st.write("Inward Preview:", df_v_inward.head(5))
-            else:
+            if st.button("🚀 Calculate Variance Report"):
                 df_vb_clean = df_v_bom.copy()
-                df_vb_clean['Material Code'] = df_vb_clean[b_mat].astype(str).str.strip().str.upper()
-                df_vb_clean['BOM Rate'] = pd.to_numeric(df_vb_clean[b_rat], errors='coerce').fillna(0)
+                df_vb_clean['Material Code'] = df_vb_clean[selected_b_mat].astype(str).str.strip().str.upper()
+                df_vb_clean['BOM Rate'] = pd.to_numeric(df_vb_clean[selected_b_rat], errors='coerce').fillna(0)
                 df_vb_clean = df_vb_clean.drop_duplicates(subset=['Material Code'], keep='first')
 
                 df_vi_clean = df_v_inward.copy()
-                df_vi_clean['Material Code'] = df_vi_clean[i_mat].astype(str).str.strip().str.upper()
-                df_vi_clean['Inward Qty'] = pd.to_numeric(df_vi_clean[i_qty], errors='coerce').fillna(0)
-
-                if i_rat:
-                    df_vi_clean['Purchase Rate'] = pd.to_numeric(df_vi_clean[i_rat], errors='coerce').fillna(0)
-                elif i_amt:
-                    df_vi_clean['Total Amount'] = pd.to_numeric(df_vi_clean[i_amt], errors='coerce').fillna(0)
-                    df_vi_clean['Purchase Rate'] = df_vi_clean.apply(
-                        lambda row: (row['Total Amount'] / row['Inward Qty']) if row['Inward Qty'] > 0 and row['Total Amount'] > 0 else 0, axis=1
-                    )
-                else:
-                    df_vi_clean['Purchase Rate'] = 0
+                df_vi_clean['Material Code'] = df_vi_clean[selected_i_mat].astype(str).str.strip().str.upper()
+                df_vi_clean['Inward Qty'] = pd.to_numeric(df_vi_clean[selected_i_qty], errors='coerce').fillna(0)
+                df_vi_clean['Purchase Rate'] = pd.to_numeric(df_vi_clean[selected_i_rat], errors='coerce').fillna(0)
 
                 merged_v = pd.merge(df_vi_clean, df_vb_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
                 merged_v['BOM Rate'] = merged_v['BOM Rate'].fillna(0)
