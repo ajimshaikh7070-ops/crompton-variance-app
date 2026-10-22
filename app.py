@@ -293,6 +293,27 @@ with tab6:
             # Default select 'BOM' sheet if available
             default_sheet_idx = v_sheet_names.…
             
+[7:22 pm, 22/10/2026] Azim: # ==========================================
+# TAB 6: VARIANCE REPORT
+# ==========================================
+with tab6:
+    st.title("⚡ Material Variance Report (Inward vs BOM)")
+    st.write("Inward purchase rates ko Master BOM rates ke sath compare karke Loss/Gain check karein.")
+
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        v_bom = st.file_uploader("Upload BOM for Variance", type=["xlsx", "xls"], key="vb")
+    with col_v2:
+        v_in = st.file_uploader("Upload Inward for Variance", type=["xlsx", "xls"], key="vi")
+
+    if v_bom and v_in:
+        try:
+            v_xls = pd.ExcelFile(v_bom)
+            v_sheet_names = v_xls.sheet_names
+            # Default select 'BOM' sheet if available
+            default_sheet_idx = v_sheet_names.…
+
+# ==========================================
 # TAB 6: VARIANCE REPORT
 # ==========================================
 with tab6:
@@ -388,6 +409,9 @@ with tab6:
                     file_name="Crompton_Variance_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+
+        except Exception as e:
+            st.error(f"Variance Calculation Error: {e}")
 
         except Exception as e:
             st.error(f"Variance Calculation Error: {e}")
