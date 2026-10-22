@@ -140,7 +140,6 @@ with tab1:
             <button onclick="window.print();" class="print-btn">🖨️ Print / Save as PDF</button>
         """, unsafe_allow_html=True)
 
-    # Professional Tax Invoice HTML Preview Layout
     st.markdown("---")
     st.subheader("👁️ Formal Tax Invoice Layout Preview")
 
@@ -273,46 +272,6 @@ with tab5:
         sh = st.selectbox("Select Sheet", xls_b.sheet_names)
         st.dataframe(pd.read_excel(xls_b, sheet_name=sh))
 
-[7:22 pm, 22/10/2026] Azim: # ==========================================
-# TAB 6: VARIANCE REPORT
-# ==========================================
-with tab6:
-    st.title("⚡ Material Variance Report (Inward vs BOM)")
-    st.write("Inward purchase rates ko Master BOM rates ke sath compare karke Loss/Gain check karein.")
-
-    col_v1, col_v2 = st.columns(2)
-    with col_v1:
-        v_bom = st.file_uploader("Upload BOM for Variance", type=["xlsx", "xls"], key="vb")
-    with col_v2:
-        v_in = st.file_uploader("Upload Inward for Variance", type=["xlsx", "xls"], key="vi")
-
-    if v_bom and v_in:
-        try:
-            v_xls = pd.ExcelFile(v_bom)
-            v_sheet_names = v_xls.sheet_names
-            # Default select 'BOM' sheet if available
-            default_sheet_idx = v_sheet_names.…
-            
-[7:22 pm, 22/10/2026] Azim: # ==========================================
-# TAB 6: VARIANCE REPORT
-# ==========================================
-with tab6:
-    st.title("⚡ Material Variance Report (Inward vs BOM)")
-    st.write("Inward purchase rates ko Master BOM rates ke sath compare karke Loss/Gain check karein.")
-
-    col_v1, col_v2 = st.columns(2)
-    with col_v1:
-        v_bom = st.file_uploader("Upload BOM for Variance", type=["xlsx", "xls"], key="vb")
-    with col_v2:
-        v_in = st.file_uploader("Upload Inward for Variance", type=["xlsx", "xls"], key="vi")
-
-    if v_bom and v_in:
-        try:
-            v_xls = pd.ExcelFile(v_bom)
-            v_sheet_names = v_xls.sheet_names
-            # Default select 'BOM' sheet if available
-            default_sheet_idx = v_sheet_names.…
-
 # ==========================================
 # TAB 6: VARIANCE REPORT
 # ==========================================
@@ -333,7 +292,6 @@ with tab6:
             default_sheet_idx = v_sheet_names.index('BOM') if 'BOM' in v_sheet_names else (1 if len(v_sheet_names) > 1 else 0)
             v_sheet = st.selectbox("Select BOM Sheet for Variance", v_sheet_names, index=default_sheet_idx, key="v_sheet_sel")
             
-            # Max value 50 kar di hai taaki 31 easily set ho sake
             v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=50, value=31, step=1, key="v_skip_input")
             
             df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
@@ -409,9 +367,6 @@ with tab6:
                     file_name="Crompton_Variance_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-
-        except Exception as e:
-            st.error(f"Variance Calculation Error: {e}")
 
         except Exception as e:
             st.error(f"Variance Calculation Error: {e}")
