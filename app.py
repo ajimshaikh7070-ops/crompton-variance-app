@@ -250,7 +250,11 @@ with tab3:
     st.title("📥 Monthly Inward Module")
     inward_file_tab = st.file_uploader("Upload Inward Excel", type=["xlsx", "xls"], key="in_up")
     if inward_file_tab:
-        st.dataframe(pd.read_excel(inward_file_tab))
+        df_inward_raw = pd.read_excel(inward_file_tab)
+        # Forward fill to handle merged cells in Excel
+        df_inward_raw = df_inward_raw.ffill()
+        st.success("✅ Inward file loaded & merged cells filled successfully!")
+        st.dataframe(df_inward_raw)
 
 # ==========================================
 # TAB 4: MONTHLY OUTWARD
@@ -296,6 +300,9 @@ with tab6:
             
             df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
             df_v_inward = pd.read_excel(v_in, sheet_name=0)
+            
+            # Forward fill merged cells in Inward file
+            df_v_inward = df_v_inward.ffill()
 
             st.markdown("---")
             st.subheader("🛠️ Column Mapping Settings")
