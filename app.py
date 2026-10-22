@@ -281,7 +281,7 @@ with tab5:
 # ==========================================
 with tab6:
     st.title("⚡ Material Variance Report (Inward vs BOM)")
-    st.write("Inward purchase rates ko Master BOM rates ke sath compare karke Loss/Gain check karein.")
+    st.write("Inward purchase rates ko Master BOM rates ke sath compare karein aur GST calculations verify karein.")
 
     col_v1, col_v2 = st.columns(2)
     with col_v1:
@@ -329,22 +329,28 @@ with tab6:
                 selected_i_qty = st.selectbox("Inward Quantity Column", inward_cols, index=inward_cols.index(i_qty_default) if i_qty_default in inward_cols else 0)
                 selected_i_rat = st.selectbox("Inward Rate Per Unit Column", inward_cols, index=inward_cols.index(i_rat_default) if i_rat_default in inward_cols else 0)
 
-            if st.button("🚀 Calculate Variance & Loss/Gain"):
+            if st.button("🚀 Calculate Variance & Verify GST"):
                 df_vb_clean = df_v_bom.copy()
-                df_vb_clean['Material Code'] = df_vb_clean[selected_b_mat].astype(str).str.strip().str.upper()
+                df_vb_clean['Material Code'] = df_vb_clean[selected_b_mat].astype(str).str.strip().str.upper().str.replace(r'\.0$', '', regex=True)
                 df_vb_clean['BOM Rate'] = pd.to_numeric(df_vb_clean[selected_b_rat], errors='coerce').fillna(0)
                 df_vb_clean = df_vb_clean.drop_duplicates(subset=['Material Code'], keep='first')
 
                 df_vi_clean = df_v_inward.copy()
-                df_vi_clean['Material Code'] = df_vi_clean[selected_i_mat].astype(str).str.strip().str.upper()
+                df_vi_clean['Material Code'] = df_vi_clean[selected_i_mat].astype(str).str.strip().str.upper().str.replace(r'\.0$', '', regex=True)
                 df_vi_clean['Inward Qty'] = pd.to_numeric(df_vi_clean[selected_i_qty], errors='coerce').fillna(0)
                 df_vi_clean['Purchase Rate'] = pd.to_numeric(df_vi_clean[selected_i_rat], errors='coerce').fillna(0)
+
+                # Mathematical & GST Verification Calculations
+                df_vi_clean['Calculated Basic Amount'] = round(df_vi_clean['Inward Qty'] * df_vi_clean['Purchase Rate'], 2)
+                df_vi_clean['Calculated CGST (9%)'] = round(df_vi_clean['Calculated Basic Amount'] * 0.09, 2)
+                df_vi_clean['Calculated SGST (9%)'] = round(df_vi_clean['Calculated Basic Amount'] * 0.09, 2)
+                df_vi_clean['Calculated Grand Total'] = round(df_vi_clean['Calculated Basic Amount'] + df_vi_clean['Calculated CGST (9%)'] + df_vi_clean['Calculated SGST (9%)'], 2)
 
                 # Merge Inward with BOM Rates
                 merged_v = pd.merge(df_vi_clean, df_vb_clean[['Material Code', 'BOM Rate']], on='Material Code', how='left')
                 merged_v['BOM Rate'] = merged_v['BOM Rate'].fillna(0)
                 
-                # Calculations
+                # Variance Calculations
                 merged_v['Price Difference (Per Unit)'] = merged_v['Purchase Rate'] - merged_v['BOM Rate']
                 merged_v['Total Variance Amount'] = merged_v['Price Difference (Per Unit)'] * merged_v['Inward Qty']
 
@@ -361,19 +367,19 @@ with tab6:
                 v3.metric(f"Net Variance ({v_label})", f"₹ {abs(net_var):,.2f}")
 
                 st.markdown("---")
-                st.subheader("📋 Detailed Variance Table (Inward vs BOM)")
+                st.subheader("📋 Detailed Variance & GST Verification Table")
                 st.dataframe(merged_v)
 
                 v_buffer = io.BytesIO()
                 with pd.ExcelWriter(v_buffer, engine='openpyxl') as writer:
-                    merged_v.to_excel(writer, index=False, sheet_name='Variance Report')
+                    merged_v.to_excel(writer, index=False, sheet_name='Variance_GST_Report')
 
                 st.download_button(
-                    label="📥 Download Variance Report Excel",
+                    label="📥 Download Verified Variance & GST Report Excel",
                     data=v_buffer.getvalue(),
-                    file_name="Crompton_Variance_Report.xlsx",
+                    file_name="Crompton_Variance_GST_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
         except Exception as e:
-            st.error(f"Variance Calculation Error: {e}")
+            st.error(f"Calculation Error: {e}")
