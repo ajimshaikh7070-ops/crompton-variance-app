@@ -158,14 +158,14 @@ with tab1:
             <tr>
                 <td style="width: 50%; vertical-align: top; padding: 6px;">
                     <strong>Bill TO : CG POWER AND INDUSTRIAL</strong><br>
-                    ADdress: A-6/2 MIDC, AHMEDNAGAR<br>
+                    Address: A-6/2 MIDC, AHMEDNAGAR<br>
                     State : Maharashtra &nbsp;|&nbsp; State code : 27<br>
                     Place of supply : maharashtra &nbsp;|&nbsp; Country: India &nbsp;|&nbsp; Pin code: 414111<br>
                     GSTIN : 27AAACC3840K1ZP &nbsp;|&nbsp; PAN : AAACC3840K
                 </td>
                 <td style="width: 50%; vertical-align: top; padding: 6px;">
                     <strong>TRANSPORT: {transport_name}</strong><br>
-                    <strong>Invoice No.:</strong> {inv_no} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>VHEHICAL NO:</strong> {vehicle_no}<br>
+                    <strong>Invoice No.:</strong> {inv_no} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>VEHICLE NO:</strong> {vehicle_no}<br>
                     <strong>Invoice Date:</strong> {inv_date}<br>
                     <strong>Purchase Order No.:</strong> {po_no}<br>
                     <strong>Purchase Order Date:</strong> {po_date}
@@ -219,9 +219,9 @@ with tab1:
 
         <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px;" border="1">
             <tr>
-                <td style="width: 33%; padding: 6px; vertical-align: top;"><strong>SECURITY ENTRY</strong><br><br><br>Recieved by &Date</td>
-                <td style="width: 33%; padding: 6px; vertical-align: top;"><strong>CCI NO</strong><br><br><br>D&R Checked by &date</td>
-                <td style="width: 34%; padding: 6px; vertical-align: top;"><strong>FOR SHRAVANI ELECTRICALS</strong><br><br><br><div style="text-align: center;">Authorized signatory</div>Inspection BY& DATE &nbsp;&nbsp;|&nbsp;&nbsp; Stores In Charge</td>
+                <td style="width: 33%; padding: 6px; vertical-align: top;"><strong>SECURITY ENTRY</strong><br><br><br>Received by & Date</td>
+                <td style="width: 33%; padding: 6px; vertical-align: top;"><strong>CCI NO</strong><br><br><br>D&R Checked by & Date</td>
+                <td style="width: 34%; padding: 6px; vertical-align: top;"><strong>FOR SHRAVANI ELECTRICALS</strong><br><br><br><div style="text-align: center;">Authorized signatory</div>Inspection BY & DATE &nbsp;&nbsp;|&nbsp;&nbsp; Stores In Charge</td>
             </tr>
         </table>
     </div>
@@ -250,9 +250,7 @@ with tab3:
     st.title("📥 Monthly Inward Module")
     inward_file_tab = st.file_uploader("Upload Inward Excel", type=["xlsx", "xls"], key="in_up")
     if inward_file_tab:
-        df_inward_raw = pd.read_excel(inward_file_tab)
-        # Forward fill to handle merged cells in Excel
-        df_inward_raw = df_inward_raw.ffill()
+        df_inward_raw = pd.read_excel(inward_file_tab).ffill()
         st.success("✅ Inward file loaded & merged cells filled successfully!")
         st.dataframe(df_inward_raw)
 
@@ -263,7 +261,7 @@ with tab4:
     st.title("📤 Monthly Outward Module")
     outward_file_tab = st.file_uploader("Upload Outward Excel", type=["xlsx", "xls"], key="out_up")
     if outward_file_tab:
-        st.dataframe(pd.read_excel(outward_file_tab))
+        st.dataframe(pd.read_excel(outward_file_tab).ffill())
 
 # ==========================================
 # TAB 5: MONTHLY PLAN & BOM
@@ -273,8 +271,9 @@ with tab5:
     bom_file_tab = st.file_uploader("Upload Master BOM Excel", type=["xlsx", "xls"], key="bom_up")
     if bom_file_tab:
         xls_b = pd.ExcelFile(bom_file_tab)
-        sh = st.selectbox("Select Sheet", xls_b.sheet_names)
-        st.dataframe(pd.read_excel(xls_b, sheet_name=sh))
+        sh = st.selectbox("Select Sheet", xls_b.sheet_names, index=xls_b.sheet_names.index('BOM') if 'BOM' in xls_b.sheet_names else 0)
+        skip_r = st.number_input("Header Row Index (Skip Top Rows)", min_value=0, max_value=50, value=31 if sh=='BOM' else 0, step=1)
+        st.dataframe(pd.read_excel(xls_b, sheet_name=sh, skiprows=skip_r))
 
 # ==========================================
 # TAB 6: VARIANCE REPORT (BOM & GST SEPARATE)
@@ -299,10 +298,7 @@ with tab6:
             v_skip = st.number_input("BOM Header Row Index (Skip Top Rows)", min_value=0, max_value=50, value=31, step=1, key="v_skip_input")
             
             df_v_bom = pd.read_excel(v_xls, sheet_name=v_sheet, skiprows=v_skip)
-            df_v_inward = pd.read_excel(v_in, sheet_name=0)
-            
-            # Forward fill merged cells in Inward file
-            df_v_inward = df_v_inward.ffill()
+            df_v_inward = pd.read_excel(v_in, sheet_name=0).ffill()
 
             st.markdown("---")
             st.subheader("🛠️ Column Mapping Settings")
@@ -364,7 +360,6 @@ with tab6:
                 v_label = "Loss (Higher Purchase Rate)" if net_var > 0 else "Gain / Savings"
                 v3.metric(f"Net Variance ({v_label})", f"₹ {abs(net_var):,.2f}")
 
-                # Display Tabs inside Tab 6 for clear separation
                 r_tab1, r_tab2 = st.tabs(["📊 BOM Rate Variance Report", "💰 GST Calculation Verification Report"])
 
                 with r_tab1:
